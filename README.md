@@ -167,7 +167,7 @@ stata -b do "scripts-analysis/Water Quality.do"
 
 ## Citation
 
-> Riascos, J. et al. (2026). Sustainable Development & The Extractive Industry: The Mexican Case. *Ecological Economics*.
+> Bacouel-Jentjens, S. et al. (2026). Sustainable Development & The Extractive Industry: The Mexican Case. *Ecological Economics*.
 
 ---
 
