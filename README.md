@@ -38,7 +38,7 @@ Download the **microdata files** (`.dbf` for 1990–2010, `.CSV` for 2020, one f
   # Linux / Mac
   export NASA_EARTHDATA_TOKEN="your-token-here"
   ```
-- Run `scripts-cleaning/nasa.py` — it downloads all tiles covering Mexico (2000–2020) via the LP DAAC API
+- Run `scripts-cleaning/nasa_data_fetching.py` — it downloads all tiles covering Mexico (2000–2020) via the LP DAAC API
 - Output goes to `NDVI/`
 
 ### 4. Land use data
@@ -57,38 +57,33 @@ Download the **microdata files** (`.dbf` for 1990–2010, `.CSV` for 2020, one f
 
 ---
 
-## Expected folder structure
+## Repository structure
 
 ```
-Mexico/                         <- repo root
+mexico-mining-paper/            <- repo root
 |-- config.py                   <- Python path config (auto-detects root)
 |-- config.do                   <- Stata path config (sets $root, $core, etc.)
 |
 |-- scripts-cleaning/           <- data cleaning and construction
-|   |-- mine_data.py            # MINEX -> treatment variable
-|   |-- nasa.py                 # download NASA MODIS NDVI tiles
-|   |-- nasa_qgis.py            # merge NDVI tiles with shapefiles (QGIS)
+|   |-- data_cleaning_I.py      # merge all municipality-level variables into panel
+|   |-- data_cleaning_II.py     # clean MINEX mining records -> treatment variable
 |   |-- Census_cleanin.py       # census .dbf -> aggregated CSV per year
-|   |-- Cleanin.py              # merge all municipality-level variables
-|   |-- land_use_fetch.py       # fetch land use from NASA LP DAAC
+|   |-- nasa_data_fetching.py   # download NASA MODIS NDVI tiles via LP DAAC API
+|   |-- nasa_qgis.py            # merge NDVI tiles with municipal shapefiles (QGIS)
+|   |-- land_use_fetch.py       # fetch land use rasters from NASA LP DAAC
 |   |-- LandUse_qgis.py         # spatial merge land use x municipalities (QGIS)
-|   |-- Mexico_landuse_merge.py # aggregate land use Excel files
-|   |-- Sample.py               # sample selection -> final panel dataset
+|   |-- Mexico_landuse_merge.py # aggregate land use files into municipality table
 |   |-- mexicoqgis.py           # buffer/intersection for spatial rings (QGIS)
-|   |-- Censo_cleanin.do        # Stata cleaning for 2020 census
-|   `-- Cleanin_gini.do         # Gini construction from 2020 microdata
+|   |-- Censo_cleanin.do        # Stata cleaning for 2020 census microdata
+|   `-- Cleanin_gini.do         # Gini coefficient construction from 2020 microdata
 |
 |-- scripts-analysis/           <- econometric analysis (Stata)
-|   |-- Municipality_merge.do   # merge all cleaned datasets into panel
-|   |-- Census Analysis.do      # main DID estimates (income, education)
+|   |-- Municipality_analysis.do # merge cleaned datasets and build panel
+|   |-- Census Analysis.do      # main DID estimates (income, education, Gini)
 |   |-- Census_gini.do          # Gini-specific DID regressions
 |   |-- LandUse Analysis.do     # DID estimates for land use outcomes
 |   |-- ndvi.do                 # DID estimates for vegetation (NDVI)
-|   |-- Water Quality.do        # water-related outcome analysis
-|   |-- Neighbors_converting.do # spatial neighbor matrix construction
-|   |-- Spatial trucla.do       # spatial spillover analysis
-|   |-- to make tables.do       # export results to LaTeX tables
-|   `-- graphgini.py            # Gini descriptive visualizations
+|   `-- Water Quality.do        # DID estimates for water-related outcomes
 |
 |-- Censo1990/                  <- raw census data (not tracked)
 |-- Censo2000/                  <- raw census data (not tracked)
@@ -108,7 +103,7 @@ Mexico/                         <- repo root
 
 **Python 3.9+**
 ```
-pip install pandas numpy pyreadstat scikit-learn geopandas texttable latextable requests
+pip install pandas numpy pyreadstat scikit-learn geopandas requests
 ```
 
 **Stata 16+**
@@ -125,38 +120,33 @@ ssc install estout
 ### Run order
 
 ```bash
-# 1 -- Build treatment variable from MINEX mining records
-python scripts-cleaning/mine_data.py
+# 1 -- Clean MINEX mining records -> treatment variable
+python scripts-cleaning/data_cleaning_II.py
 
-# 2 -- Download and process satellite NDVI data
-python scripts-cleaning/nasa.py
-# Then open QGIS and run scripts-cleaning/nasa_qgis.py in the Python console
-
-# 3 -- Clean census microdata (one CSV per year per municipality)
+# 2 -- Clean census microdata (one CSV per year per municipality)
 python scripts-cleaning/Census_cleanin.py
+
+# 3 -- Download and process satellite NDVI data
+python scripts-cleaning/nasa_data_fetching.py
+# Then open QGIS and run scripts-cleaning/nasa_qgis.py in the Python console
 
 # 4 -- Fetch and spatially merge land use
 python scripts-cleaning/land_use_fetch.py
 # Then run scripts-cleaning/LandUse_qgis.py in QGIS
 python scripts-cleaning/Mexico_landuse_merge.py
 
-# 5 -- Build the full municipality panel
-python scripts-cleaning/Cleanin.py
-python scripts-cleaning/Sample.py
+# 5 -- Merge all municipality-level variables into panel
+python scripts-cleaning/data_cleaning_I.py
 
 # --- all remaining steps are in Stata; run from repo root ---
 
-# 6 -- Merge all sources into a panel dataset
-stata -b do scripts-analysis/Municipality_merge.do
-
-# 7 -- Main analysis
+# 6 -- Build panel dataset and main analysis
+stata -b do scripts-analysis/Municipality_analysis.do
 stata -b do "scripts-analysis/Census Analysis.do"
 stata -b do scripts-analysis/Census_gini.do
 stata -b do "scripts-analysis/LandUse Analysis.do"
 stata -b do scripts-analysis/ndvi.do
-
-# 8 -- Export tables
-stata -b do "scripts-analysis/to make tables.do"
+stata -b do "scripts-analysis/Water Quality.do"
 ```
 
 > **QGIS scripts:** open QGIS, go to *Plugins > Python Console*, and paste the script. Edit the `ROOT` variable at the top of each file to match your local clone path.
@@ -169,9 +159,9 @@ stata -b do "scripts-analysis/to make tables.do"
 
 **Main identification strategy:** Staggered Difference-in-Differences (Callaway & Sant'Anna 2021), which accounts for heterogeneous treatment timing across municipalities.
 
-**Additional estimators:** TWFE with municipality x year fixed effects, Propensity Score Matching, Regression Adjustment, Spatial spillover analysis.
+**Additional estimators:** TWFE with municipality x year fixed effects, Propensity Score Matching, Regression Adjustment.
 
-**Outcome variables:** log income, Gini coefficient, school enrollment rate, years of schooling, log local government spending, NDVI, land use shares.
+**Outcome variables:** log income, Gini coefficient, school enrollment rate, years of schooling, log local government spending, NDVI, land use shares, water quality indicators.
 
 ---
 
